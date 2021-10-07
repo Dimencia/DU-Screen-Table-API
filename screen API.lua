@@ -131,7 +131,7 @@ function Column:new(name, width, key)
 end
 
 
-Row = {Data={}, Children={}, Visible = true, FillColor="#ADADFF", TextColor="#000000", StrokeColor="#FFFFFF", FontName="Play", FontSize=20, BoxRadius = 10, HoverFillColor="#EEEEEE", ClickFillColor="#FFFFFF", MinHeight=0, StrokeWidth=1}
+Row = {Data={}, Children={}, Visible = true, FillColor="#ADADFF", TextColor="#000", StrokeColor="#FFF", FontName="Play", FontSize=20, BoxRadius = 10, HoverFillColor="#EEE", ClickFillColor="#FFF", MinHeight=0, StrokeWidth=1}
 
 function Row:new(data, parent)
 	o = {}
@@ -260,7 +260,7 @@ end
 
 
 
-
+-- You can edit from here on out, this is all example past here
 
 
 
