@@ -7,7 +7,7 @@ A library allowing easy creation of tables to be displayed on screens, using the
 
 1. Copy the contents of `screen API.lua` to Unit.Start.  It includes examples at the end - remove these if making your own table
 2. Copy the contents of `TableAPIRenderscript.lua` to the screen you wish to use
-3. Add this line to System.Update: `screenTable:Update(screen)`, where `screenTable` is the Table you've created with Table:new, and `screen` is the screen's slot
+3. Add this line to System.Update: `UpdateScreenForTables(screen, Tables)`, where `Tables` is a collection of the Tables you've created with Table:new, and `screen` is the screen's slot (even if using only one Table, put it into a lua table for this function)
 
 ## Creating Tables
 
@@ -52,6 +52,8 @@ You can change any of these on an instance.  You can change the defaults when in
 `ClickFillColor` - (hex string) Default: "#FFF" - The color of the background for this row on the tick that it is clicked
 
 `MinHeight` - (number) Default: 0 - The minimum height for this row (if the contents are not this tall, it will be this tall anyway)
+
+`Padding` - (table) Default: Top=2,Bottom=2 - Padding to apply between this row and adjacent ones
 
 
 
@@ -112,7 +114,6 @@ You can change any of these on an instance.  You can change the defaults when in
 `ScrollButtonHeight` - (string/percent) Default: "5%" - The height of the top/bottom scroll buttons on the scrollbar, in percentage of table height
 
 `CategoryTabAmount` - (number) Default: 20 - The number of pixels to indent the first column of each row beneath a category (stacks for multiple sub-categories)
-
 
 
 ### Functions
