@@ -981,6 +981,7 @@ for k,v in ipairs(_items1) do
 		category.BoxRadius = 0
 		category.StrokeWidth = 0
 		category.Padding.Bottom = 2
+		category.Wrap = false
 		groups[v.GroupId] = category
 		screenTable:AddRow(category)
 	end
@@ -1006,7 +1007,8 @@ for k,v in ipairs(_items2) do
 		category.StrokeWidth = 0
 		category.BoxRadius = 0
 		category.HoverFillColor = "#0F0"
-		category.Padding.Bottom=2
+		category.Padding.Bottom = 2
+		category.Wrap = false
 		groups[v.GroupId] = category
 		table2:AddRow(category)
 	end
