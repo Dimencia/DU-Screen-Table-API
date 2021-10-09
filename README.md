@@ -55,6 +55,8 @@ You can change any of these on an instance.  You can change the defaults when in
 
 `Padding` - (table) Default: Top=2,Bottom=2 - Padding to apply between this row and adjacent ones
 
+`Wrap` - (bool) Default: True - Whether or not to wrap text in this row (useful for 'merged' categories)
+
 
 
 ### Functions
