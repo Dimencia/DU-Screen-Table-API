@@ -131,7 +131,7 @@ function Column:new(name, width, key)
 end
 
 
-Row = {Data={}, Children={}, Visible = true, FillColor="#ADADFF", TextColor="#000", StrokeColor="#FFF", FontName="Play", FontSize=20, BoxRadius = 10, HoverFillColor="#EEE", ClickFillColor="#FFF", MinHeight=0, StrokeWidth=1, Padding={Top=2,Bottom=2}} --Left/right pad don't make sense on a row
+Row = {Data={}, Children={}, Visible = true, FillColor="#ADADFF", TextColor="#000", StrokeColor="#FFF", FontName="Play", FontSize=20, BoxRadius = 10, HoverFillColor="#EEE", ClickFillColor="#FFF", MinHeight=0, StrokeWidth=1, Padding={Top=2,Bottom=2}, Wrap=true} --Left/right pad don't make sense on a row
 
 function Row:new(data, parent)
 	o = {}
@@ -151,6 +151,7 @@ function Row:new(data, parent)
 	o.MinHeight = self.MinHeight
 	o.StrokeWidth = self.StrokeWidth
 	o.Padding = self.Padding
+	o.Wrap = self.Wrap
 	if parent then
 		parent.Children[#parent.Children+1] = o
 	end
@@ -1018,3 +1019,11 @@ Table.OnClick = function(self, clickedRow)
 end
 
 Tables = {screenTable, table2}
+
+-- Data looks like this: 
+--{
+--	FullName = "Rare Heavy Railgun XS",
+--	Tier = 4,
+--	Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
+--	GroupId = "08d8a31f-4f95-4404-84e5-b689b441fd9d"
+--}
