@@ -320,10 +320,14 @@ if not init then
 		for colNum,column in ipairs(Table.Columns) do
 			local colKey = column.Key
 			if row.Data[colKey] then
-				if colNum > 1 then -- Only tab the first column
-					row.Data[colKey] = GetWordWrap(row.Data[colKey], font, column.Width)
+				if row.Wrap then
+					if colNum > 1 then -- Only tab the first column
+						row.Data[colKey] = GetWordWrap(row.Data[colKey], font, column.Width)
+					else
+						row.Data[colKey] = GetWordWrap(row.Data[colKey], font, column.Width - tabValue*Table.CategoryTabAmount)
+					end
 				else
-					row.Data[colKey] = GetWordWrap(row.Data[colKey], font, column.Width - tabValue*Table.CategoryTabAmount)
+					row.Data[colKey] = {row.Data[colKey]}
 				end
 				local sectionHeight = 0
 				for _,txt in ipairs(row.Data[colKey]) do
