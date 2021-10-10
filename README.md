@@ -15,37 +15,63 @@ Check the end of `screen API.lua` for an example of constructing tables, categor
 
 More info coming soon
 
-## Variables
+## Defaults
 
-You can change any of these on an instance.  You can change the defaults when initializing a new instance by editing the static `Table`, `Row`, or `Column`
+You can change any of these variables on an instance.  You can change the defaults when initializing a new instance by editing the static `TableDefaults` or `StyleDefaults`.  You can set the default Style or Canvas to use for new instances by setting `DefaultStyle` and `DefaultCanvas` to the style or canvas you want
 
-## Column
+
+## Canvas
+
+The Canvas is a new wrapper object meant to encapsulate the contents of one Screen.  You may add multiple Tables to a Canvas (currently only Tables are supported).  
+This new implementation allows us to use an ID system, greatly reducing the amount of characters transmitted to the screen
+
+If you are only writing to one screen, you can ignore this - it creates and uses a `DefaultCanvas` for everything by default.  If you wish to write to multiple screens, create and setup two `Canvas` objects, and either set them into `DefaultCanvas` while you write on each one, or pass them as arguments when creating other objects
+
 ### Variables
 
-`Name` - (string) The display name of the column
+`Canvas.NeedsUpdate` - (bool) Default: True - Indicates Table data has been changed and should be sent to the screen.  Set this to True after modifying data.  If this is true, it is still sending the previous data, and your implementation should wait until it's false before triggering it again
 
-`Width` - (string/percent) Default: "20%" The width, in percent of table size, of the column
+`DefaultCanvas` - (Canvas) Default: New Canvas - This is the Canvas used if you create an object without specifying a Canvas.  You may set this to the Canvas you are currently building so that newly created Tables, Rows, etc are all tied to this Canvas.  
 
-`Key` - (any) The key, used in row.Data[key], to identify the data to display in this column
+### Functions
 
+`Canvas:new()` - Creates a new Canvas.  The canvas can be passed into any constructor, or set into `DefaultCanvas` so that all new objects are part of the Canvas
 
-## Row
+`yourCanvas:Update(screen)` - Meant to be called in System.Update, updates the screen with mousewheel information.  If Canvas.NeedsUpdate is true, also sends updated table data
+
+`yourCanvas:Add(component)` - Adds `component` to the Canvas's list of `RenderedComponents`.  If you wish to add this manually, be sure you add the ID of the component, not the component itself
+
+`yourCanvas:Get(componentID)` - Gets a component from the given `componentID`.  Equivalent to `yourCanvas.Components[componentID]`
+
+## Style
+
+The Style is another new object that helps reduce information transmission.  Rather than sending a full set of Style data with every row, you simply create a Style once, and then the row references that Style by ID
+
+Be careful not to set row.Style = someStyle; always use the function `Row:SetStyle`, or set `row.Style = someStyle.ID` directly
+
+Currently only a Row and Table.HeaderStyle can accept a Style, but others may use Styles later
+
 ### Variables
-`Visible` - (bool) Default: True -  Whether or not to display this row when drawing
 
-`TextColor` - (hex string) Default: "#000" - The color of text in this row
+`ID` - (Number) Default: ? - A unique ID that is assigned upon creation.  This can be used with `yourCanvas:get` to retrieve the object if you have only the ID
 
-`FillColor` - (hex string) Default: "#ADADFF" - The color of the background for this row
+`DefaultStyle` - (Style) Default: StyleDefaults - All new non-Style objects created that can accept a Style will use this Style by default.  You may set this to the Style of your choice so that new objects have it automatically.  
 
-`StrokeColor` - (hex string) Default: "#FFF" - The color of the stroke around the background box for this row
+`StyleDefaults` - (Style) Default: See Below - All new Style objects created will use these values.  This variable may be modified so that new Styles have your values automatically
 
-`StrokeWidth` - (number) Default: 1 - The width of the stroke around the background box for this row
+`TextColor` - (hex string) Default: "#000" - The color of text for this object
 
-`FontName` - (string) Default: "Play" - The name of the font to use in this row.  See [Valid Fonts] below
+`FillColor` - (hex string) Default: "#ADADFF" - The color of the background for this object
 
-`FontSize` - (number) Default: 20 - The size of the font to use in this row
+`StrokeColor` - (hex string) Default: "#FFF" - The color of the stroke around the background box for this object
 
-`BoxRadius` - (number) Default: 10 - The radius of the curve on the Rounded Box for each cell in the row - 0 for square edges
+`StrokeWidth` - (number) Default: 1 - The width of the stroke around the background box for this object
+
+`FontName` - (string) Default: "Play" - The name of the font to use in this object.  See [Valid Fonts] below
+
+`FontSize` - (number) Default: 20 - The size of the font to use in this object
+
+`BoxRadius` - (number) Default: 10 - The radius of the curve on the Rounded Box for the object - 0 for square edges
 
 `HoverFillColor` - (hex string) Default: "#EEE" - The color of the background for this row when hovered over
 
@@ -59,15 +85,40 @@ You can change any of these on an instance.  You can change the defaults when in
 
 
 
+## Column
+### Variables
+
+`ID` - (Number) Default: ? - A unique ID that is assigned upon creation.  This can be used with `yourCanvas:get` to retrieve the object if you have only the ID
+
+`Name` - (string) The display name of the column
+
+`Width` - (string/percent) Default: "20%" The width, in percent of table size, of the column
+
+`Key` - (any) The key, used in row.Data[key], to identify the data to display in this column
+
+
+## Row
+### Variables
+
+`ID` - (Number) Default: ? - A unique ID that is assigned upon creation.  This can be used with `yourCanvas:get` to retrieve the object if you have only the ID
+
+`Visible` - (bool) Default: True -  Whether or not to display this row when drawing
+
+`Data` - (key/value pairs) Default: {} - The data used in the row, where the keys match the keys of Columns in the Table
+
+
 ### Functions
 
 `Row:new(data, parent)` - Creates a new row, where `data` is a table whose keys map to Columns you have defined.  Ex: `Row:new({Name="Main"})`, assuming you have a column with key `"Main"`.  A parent row can be passed, so that childrens row can be collapsed/expanded when the parent is clicked.  This row inherits all attributes from the static Row object at time of creation
 
 `someRow:AddRow(data)` - Creates and adds a new row to the specified parent row `someRow` with the specified data.  A shortcut for Row:new
 
+`someRow:SetStyle(style)` - Sets the Style of a Row.  Be sure to use this function - if you wish to set the Style directly, set `someRow.Style = style.ID`
 
 ## Table
 ### Variables
+
+`ID` - (Number) Default: ? - A unique ID that is assigned upon creation.  This can be used with `yourCanvas:get` to retrieve the object if you have only the ID
 
 `X` - (number) Default: 0 - The X coordinate on the screen for where the top-left of the table should begin
 
@@ -76,8 +127,6 @@ You can change any of these on an instance.  You can change the defaults when in
 `Width` - (string/percent) Default: "100%" - The width of the table, in percentage of screen width
 
 `Height` - (string/percent) Default: "100%" - The height of the table, in percentage of screen height
-
-`NeedsUpdate` - (bool) Default: True - Indicates row data has been changed and should be sent to the screen.  Set this to True after modifying data.  If this is true, it is still sending the previous data, and your implementation should wait until it's false before triggering it again
 
 `ColumnSpacing` - (number) Default: 5 - Number of pixels between all columns (horizontally)
 
@@ -89,19 +138,7 @@ You can change any of these on an instance.  You can change the defaults when in
 
 `BackgroundColor` - (hex string) Default: "#000" - Background color of the screen on which the table is drawn
 
-`HeaderFillColor` - (hex string) Default: "#FFF" - Background color of the cells in the header of the table where columns are listed
-
-`HeaderTextColor` - (hex string) Default: "#000" - Text color for the header of the table where columns are listed
-
-`HeaderStrokeColor` - (hex string) Default: "#222" - The color of the border of the cells in the header
-
-`HeaderStrokeWidth` - (number) Default: 1 - The width of the border of the cells in the header
-
-`HeaderFontName` - (string) Default: "Play-Bold" - Font name of header text where columns are listed.  See [Valid Fonts] below
-
-`HeaderFontSize` - (number) Default: 20 - Size of font for header text where columns are listed
-
-`HeaderRadius` - (number) Default: 10 - The radius of the curve on the Rounded Box for each cell in the header
+`HeaderStyle` - (hex string) Default: Default Style - The Style to use for the Table Header
 
 `ScrollWidth` - (string/percent) Default: "5%" - The width of the scrollbar in percentage of table width
 
@@ -124,6 +161,13 @@ You can change any of these on an instance.  You can change the defaults when in
 
 `yourTable:Update(screen)` - Intended to be called from within System.Update or a Timer Tick, this function sends information to the screen's input about the mousewheel state, and sends table data if `yourTable.NeedsUpdate` is true
 
+`yourTable:SetHeaderStyle(style)` - Sets the Style of the Table.  If you wish to set this directly use `yourTable.Style = style.ID`
+
+`yourTable:AddColumns(columns)` - Adds the collection `columns` to the list of Columns for the Table.  If you wish to add columns directly, ensure you are only adding `column.ID`, not the entire column object
+
+`yourTable:AddColumn(column)` - Adds a single `column` to the list of Columns for the Table.  If you wish to add columns directly, ensure you are only adding `column.ID`, not the entire column object
+
+`yourTable:AddRow(row)` - Adds a row to the Table's list of rows.  If you wish to add rows directly, ensure you are only adding `row.ID`, not the entire row object
 
 
 ### Valid Fonts
@@ -141,3 +185,17 @@ RobotoCondensed
 RobotoMono
 RobotoMono-Bold
 ```
+
+
+### Theory
+
+So, what's up with Styles and Canvas, and how does it work?
+
+As I was building this, I ran into issues with large datasets and a lot of time spent waiting for the PB/Screen to communicate, at a max of 1024 characters per tick.  Each Row had its own huge set of data about colors and fonts, and drawing multiple tables on a screen was messy
+
+To consolidate, I created a Canvas object, which can hold any amount of RenderedComponents.  Any new objects created will automatically add themselves to DefaultCanvas.Components (if no other canvas is specified), using the ID in that table as the ID of the new object.  
+So now, all references to other objects are done via ID.  Rather than having a list of Tables, each containing a list of Rows, instead we have single-depth tables at all steps, and the size of data being sent to screens is greatly minimized
+
+Styles also helped with this; most Tables really only have 2-3 different styles that they use between various types of rows, headers, etc - it was crazy to send the full style with every Row.  Instead, by requiring the user to create a Style first, we only transmit that data once ever, instead of once per row.  Each row only contains a small number ID linking it to the Styles.  Each Style is just another Component, so they exist in canvas.Components and can be looked up like anything else
+
+Eventually, this can all be expanded to be much more generic, allowing users to create simple objects as well as Tables, using these same Styles
