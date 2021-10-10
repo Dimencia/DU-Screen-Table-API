@@ -116,138 +116,85 @@ end
 
 
 -- DO NOT EDIT anything below, use your own code to set defaults.  I mean, I guess you can.
--- You should also use the below code as a reference to what you can set. 
+-- You could also use the below code as a reference to what you can set. 
 
-Column = { Width="20%", Name="", Key=""}
 
-function Column:new(name, width, key)
-	o = {}
+
+
+-- Thinking about a refactor.  
+-- 1. Components, everything is a component, every component has basic attributes like sizes... probably not rn
+-- 2. IDs, everything has an ID that gets set on creation, and references its children, parents, style by ID
+
+-- 0. Canvas object.  This may contain multiple tables, etc, and makes the whole Update thing less awkward
+Component = {}
+ComponentDefaults = {X=0,Y=0,Width="100%",Height="100%"}
+
+function Component:new()
+    o = {}
 	setmetatable(o, self)
 	self.__index = self
-	o.Name = name or ""
-	o.Key = key or o.Name
-    o.Width = width or "20%"
-	return o
+
+    for k,v in pairs(ComponentDefaults) do
+        o[k] = v
+    end
+    return o
 end
 
+Canvas = Component:new()
 
-Row = {Data={}, Children={}, Visible = true, FillColor="#ADADFF", TextColor="#000", StrokeColor="#FFF", FontName="Play", FontSize=20, BoxRadius = 10, HoverFillColor="#EEE", ClickFillColor="#FFF", MinHeight=0, StrokeWidth=1, Padding={Top=2,Bottom=2}, Wrap=true} --Left/right pad don't make sense on a row
-
-function Row:new(data, parent)
-	o = {}
-	setmetatable(o, self)
+function Canvas:new()
+    o = Component:new()
+    setmetatable(o, self)
 	self.__index = self
-	o.Data = data or {}
-	o.Children = {}
-	o.Visible = self.Visible
-	o.TextColor = self.TextColor
-	o.FillColor = self.FillColor
-	o.StrokeColor = self.StrokeColor
-	o.FontName = self.FontName
-	o.FontSize = self.FontSize
-	o.BoxRadius = self.BoxRadius
-	o.HoverFillColor = self.HoverFillColor
-	o.ClickFillColor = self.ClickFillColor
-	o.MinHeight = self.MinHeight
-	o.StrokeWidth = self.StrokeWidth
-	o.Padding = self.Padding
-	o.Wrap = self.Wrap
-	if parent then
-		parent.Children[#parent.Children+1] = o
-	end
-	return o
+
+    o.NeedsUpdate = true
+    o.UpdatePosition = 1
+    o.UpdateJson = ""
+    o.OutputData = ""
+
+    o.RenderedComponents = {} -- This holds everything that was directly added to the Canvas for rendering
+
+    o.Components = {} -- This holds everything ever created; it always adds itself here, where its ID = the key
+    -- When sending a Canvas, we pass this as part of it, and everything else uses ints to reference values in this
+    return o
 end
 
-function Row:AddRow(data)
-	return Row:new(data, self)
-end
+DefaultCanvas = Canvas:new() -- This will be given to anything created without a specified canvas, and you can set it if you want
+-- Or just use it
 
+function Canvas:Update(screen)
 
--- You should set NeedsUpdate = true whenever you change the data and need it to re-send to the screen
--- It will automatically set this to false once the data has been sent
-
--- Do not modify UpdateJson or UpdatePosition, and make sure Rows and Columns only contain their appropriate types
-Table = { Columns = {}, X="0%", Y="0%", Width="100%", Height="100%", Rows = {}, NeedsUpdate = true, UpdatePosition = 1, UpdateJson = "", ColumnSpacing = 5, RowSpacing = 5, TextPadX = 5, TextPadY = 5, BackgroundColor = "#000", HeaderFillColor = "#FFF", HeaderTextColor = "#000", HeaderFontName = "Play-Bold", HeaderFontSize = 30, HeaderRadius = 10, HeaderStrokeColor = "#222", HeaderStrokeWidth=2, OutputData = "", ScrollWidth="5%", ScrollButtonHeight="5%", ScrollActiveColor = "#999", ScrollInactiveColor = "#444", ScrollStrokeColor = "#000", ScrollStrokeWidth = 1, CategoryTabAmount = 20}
-
-function Table:new(name)
-	o = {}
-	setmetatable(o, self)
-	self.__index = self
-	o.Name = name
-	o.Columns = {}
-	o.X = self.X
-	o.Y = self.Y
-	o.Width = self.Width
-	o.Height = self.Height
-	o.Rows = {}
-	o.NeedsUpdate = self.NeedsUpdate
-	o.UpdatePosition = self.UpdatePosition
-	o.UpdateJson = self.UpdateJson
-	o.ColumnSpacing = self.ColumnSpacing
-	o.RowSpacing = self.RowSpacing
-	o.TextPadX = self.TextPadX
-	o.TextPadY = self.TextPadY
-	o.HeaderFillColor = self.HeaderFillColor
-	o.HeaderTextColor = self.HeaderTextColor
-	o.HeaderFontName = self.HeaderFontName
-	o.HeaderFontSize = self.HeaderFontSize
-	o.HeaderRadius = self.HeaderRadius
-	o.OutputData = self.OutputData
-	o.ScrollWidth = self.ScrollWidth
-	o.HeaderStrokeColor = self.HeaderStrokeColor
-	o.HeaderStrokeWidth = self.HeaderStrokeWidth
-	o.BackgroundColor = self.BackgroundColor
-	o.ScrollActiveColor = self.ScrollActiveColor
-	o.ScrollInactiveColor = self.ScrollInactiveColor
-	o.ScrollStrokeColor = self.ScrollStrokeColor
-	o.ScrollStrokeWidth = self.ScrollStrokeWidth
-	o.CategoryTabAmount = self.CategoryTabAmount
-	o.ScrollButtonHeight = self.ScrollButtonHeight
-	return o
-end
-
-function Table:AddRow(row)
-	self.Rows[#self.Rows+1] = row
-end
-
-
-function UpdateScreenForTables(screen, tables) 
-	-- Accepts a table of our Tables
-	
 	local data = {}
 	data.SW = system.getMouseWheel() -- Needs scroll wheel data every frame
 	
-	local dataFull = false
-	for tableName, tableValue in pairs(tables) do
-		if tableValue.NeedsUpdate and not dataFull then
-			tableValue.UpdatePosition = 1
-			tableValue.UpdateJson = serialize(tableValue)
-			tableValue.NeedsUpdate = false
-		end
-		local jsonLength = string.len(tableValue.UpdateJson)
+    if self.NeedsUpdate then
+        self.UpdatePosition = 1
+        self.UpdateJson = serialize({Components=self.Components, RenderedComponents=self.RenderedComponents})
+        self.NeedsUpdate = false
+        -- We should also probably iterate all of it to make sure everything that should be linked by an ID, is, in case they set something
+        -- But that may be a lot of processing.
+        system.print("Sending " .. string.len(self.UpdateJson) .. " chars of data")
+    end
+
+    local jsonLength = string.len(self.UpdateJson)
 	
-		if tableValue.UpdatePosition < jsonLength and not dataFull then
-			if tableValue.UpdatePosition == 1 then data.S = 1 system.print(tableValue.Name .. " start") end -- Flag start of transmission
-			-- We always use some chars for transmission data, and don't have the full 1024 chars to work with
-			-- Math said I should have 1006 left, but testing said 921.
-			local numAllowed = 921 - string.len(tableName) - 4
-			data.N = tableName
-			
-			if jsonLength - tableValue.UpdatePosition < numAllowed then
-				data.T = string.sub(tableValue.UpdateJson, tableValue.UpdatePosition)
-				data.F = 1
-				system.print(tableValue.Name .. " done")
-			else -- Since it's inclusive we take from 1 to 920+1, which is 921 entries
-				data.T = string.sub(tableValue.UpdateJson, tableValue.UpdatePosition, tableValue.UpdatePosition+numAllowed-1)
-			end
-			tableValue.UpdatePosition = tableValue.UpdatePosition + numAllowed
-			dataFull = true -- Only allow one table's json per update
-		end
-	end
+    if self.UpdatePosition < jsonLength then
+        if self.UpdatePosition == 1 then data.S = 1 end -- Flag start of transmission
+        -- We always use some chars for transmission data, and don't have the full 1024 chars to work with
+        -- Math said I should have 1006 left, but testing said 921.  TODO: Re-test with new methods
+        local numAllowed = 921
+        
+        if jsonLength - self.UpdatePosition < numAllowed then
+            data.T = string.sub(self.UpdateJson, self.UpdatePosition)
+            data.F = 1
+        else -- Since it's inclusive we take from 1 to 920+1, which is 921 entries
+            data.T = string.sub(self.UpdateJson, self.UpdatePosition, self.UpdatePosition+numAllowed-1)
+        end
+        self.UpdatePosition = self.UpdatePosition + numAllowed
+    end
+
 	screen.setScriptInput(serialize(data))
 	
-	-- TODO: Get data about which table was clicked and call that one's onClick
-	-- Now, get the script output and trigger OnClick if it indicates one
 	local output = screen.getScriptOutput()	
 	if output and output ~= "" then
 		local outputData = deserialize(output)
@@ -259,12 +206,147 @@ function UpdateScreenForTables(screen, tables)
 		end
 		if outputData.F then
 			local clickedRow = deserialize(self.OutputData)
-			if Table.OnClick then
-				Table.OnClick(self,clickedRow)
+			if self.OnClick then
+				self.OnClick(clickedRow)
 			end
 		end
 	end
 end
+
+function Canvas:Get(componentID)
+    return self.components[component.ID]
+end
+
+function Canvas:Add(component)
+    self.RenderedComponents[#self.RenderedComponents+1] = component.ID
+end
+
+
+
+Column = { Width="20%", Name="", Key=""}
+
+function Column:new(name, width, key, canvas)
+	o = {}
+	setmetatable(o, self)
+	self.__index = self
+	o.Name = name or ""
+	o.Key = key or o.Name
+    o.Width = width or "20%"
+
+    local c = canvas or DefaultCanvas
+    o.ID = #c.Components+1
+    c.Components[o.ID] = o
+
+	return o
+end
+
+
+Style = {}
+-- Modifying this sets the defaults when creating a new Style
+StyleDefaults = {Visible = true, FillColor="#ADADFF", TextColor="#000", StrokeColor="#FFF", FontName="Play", FontSize=20, BoxRadius = 10, HoverFillColor="#EEE", ClickFillColor="#FFF", MinHeight=0, StrokeWidth=1, PaddingTop = 2, PaddingBottom=2, Wrap=true}
+function Style:new(canvas)
+    o = {}
+	setmetatable(o, self)
+	self.__index = self
+    -- These need to be fully qualified to defaults
+    for k,v in pairs(StyleDefaults) do
+        o[k] = v
+    end
+
+    local c = canvas or DefaultCanvas
+    o.ID = #c.Components+1
+    c.Components[o.ID] = o
+
+    return o
+end
+
+DefaultStyle = Style:new() -- Modifying this sets the default Style used when creating other components
+
+
+Row = {}
+
+function Row:new(data, style, parent, canvas)
+	o = {}
+	setmetatable(o, self)
+	self.__index = self
+	o.Data = data or {}
+	o.Children = {}
+    if style then o.Style = style.ID else o.Style = DefaultStyle.ID end
+    o.Visible = true
+
+	local c = canvas or DefaultCanvas
+    o.ID = #c.Components+1
+    c.Components[o.ID] = o
+
+	if parent then
+		parent.Children[#parent.Children+1] = o.ID
+        o.Parent = parent.ID
+	end
+	return o
+end
+
+function Row:AddRow(newRow) 
+	self.Children[#self.Children+1] = newRow.ID
+    newRow.Parent = self.ID
+end
+
+function Row:SetStyle(style)
+    o.Style = style.ID
+end
+
+
+-- You should set NeedsUpdate = true whenever you change the data and need it to re-send to the screen
+-- It will automatically set this to false once the data has been sent
+
+-- WARNING: ALL References to Rows, Columns, Styles, should be given only via their ID, or using the appropriate functions
+Table = {}
+TableDefaults = { Type="Table", HeaderStyle = DefaultStyle.ID, ColumnSpacing = 5, RowSpacing = 5, TextPadX = 5, TextPadY = 5, BackgroundColor = "#000", ScrollWidth="5%", ScrollButtonHeight="5%", ScrollActiveColor = "#999", ScrollInactiveColor = "#444", ScrollStrokeColor = "#000", ScrollStrokeWidth = 1, CategoryTabAmount = 20, FreezeTopRows = true}
+
+
+-- TODO: I can solve the ID requirements by proxying the table.  
+-- Basically, what I return to them is a blank table, but has __index and __newindex set
+-- These methods then make sure they're setting a number, or pull out the ID for them, before setting the value in something like Table.Values
+-- That also means we only add Table.Values to Canvas.Components, not the thing we give to them which has functions in it
+
+-- We'll try it after I see what this current refactor broke
+
+function Table:new(canvas)
+	o = Component:new()
+	setmetatable(o, self)
+	self.__index = self
+
+    o.Columns = {}
+    o.Rows = {} -- Copying these from TableDefaults just pointed the reference at them.  I think tables are the only thing this applies to
+
+	for k,v in pairs(TableDefaults) do
+        o[k] = v
+    end
+
+    local c = canvas or DefaultCanvas
+    o.ID = #c.Components+1
+    c.Components[o.ID] = o
+
+	return o
+end
+
+function Table:SetHeaderStyle(style)
+    o.HeaderStyle = style.ID
+end
+
+function Table:AddRow(row)
+	self.Rows[#self.Rows+1] = row.ID
+end
+
+function Table:AddColumns(columns)
+    for k,v in pairs(columns) do
+        self.Columns[#self.Columns+1] = v.ID
+    end
+end
+
+function Table:AddColumn(column)
+    self.Columns[#self.Columns+1] = column.ID
+end
+
 
 
 
@@ -281,199 +363,199 @@ local _items1 = {
         FullName = "Shield Generator XS",
         Tier = 3,
         Description = "Shield Generatorsa will protect your constructs from hostile weapon damage until they are depleted. Shield generators can only be deployed on Dynamic Constructs.",
-        GroupId = "08d983f2-4c45-4042-837d-73282f0eaffc"
+        GroupId = "Shield Generators"
     },
     {
         FullName = "Shield Generator S",
         Tier = 3,
         Description = "Shield Generatorsa will protect your constructs from hostile weapon damage until they are depleted. Shield generators can only be deployed on Dynamic Constructs.",
-        GroupId = "08d983f2-4c45-4042-837d-73282f0eaffc"
+        GroupId = "Shield Generators"
     },
     {
         FullName = "Shield Generator M",
         Tier = 3,
         Description = "Shield Generatorsa will protect your constructs from hostile weapon damage until they are depleted. Shield generators can only be deployed on Dynamic Constructs.",
-        GroupId = "08d983f2-4c45-4042-837d-73282f0eaffc"
+        GroupId = "Shield Generators"
     },
     {
         FullName = "Shield Generator L",
         Tier = 3,
         Description = "Shield Generatorsa will protect your constructs from hostile weapon damage until they are depleted. Shield generators can only be deployed on Dynamic Constructs.",
-        GroupId = "08d983f2-4c45-4042-837d-73282f0eaffc"
+        GroupId = "Shield Generators"
     },
     {
         FullName = "Deep Space Asteroid Tracker",
         Tier = 3,
         Description = "The Deep Space Asteroid Tracker can be used to track and locate minable asteroirds in the System.",
-        GroupId = "08d983ea-8716-40ad-8aa8-24e2786fb1a6"
+        GroupId = "Asteroid Trackers"
     },
     {
         FullName = "Black Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Dark Gray Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Gray Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Green Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Ice Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Light Gray Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Military Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Orange Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Purple Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Red Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Sky Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Yellow Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "White Steel Panel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Painted Yellow Steel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Painted White Steel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Painted Red Steel",
         Tier = 1,
         Description = "Honeycomb materials are a material type used for construction. They are a lightweight and hollow form of their original material that retain their strength and other properties.",
-        GroupId = "08d8a31f-5093-4a63-8094-82f837fb04f3"
+        GroupId = "Steel"
     },
     {
         FullName = "Advanced Precision Railgun M",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4c89-8e0c-9250ebb84159"
+        GroupId = "Railguns M"
     },
     {
         FullName = "Rare Precision Railgun M",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4c89-8e0c-9250ebb84159"
+        GroupId = "Railguns M"
     },
     {
         FullName = "Exotic Precision Railgun M",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4c89-8e0c-9250ebb84159"
+        GroupId = "Railguns M"
     },
     {
         FullName = "Advanced Agile Railgun S",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f97-48b1-8404-6c28d83f17c6"
+        GroupId = "Railguns S"
     },
     {
         FullName = "Rare Agile Railgun S",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f97-48b1-8404-6c28d83f17c6"
+        GroupId = "Railguns S"
     },
     {
         FullName = "Exotic Agile Railgun S",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f97-48b1-8404-6c28d83f17c6"
+        GroupId = "Railguns S"
     },
     {
         FullName = "Advanced Defense Railgun S",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f97-48b1-8404-6c28d83f17c6"
+        GroupId = "Railguns S"
     },
     {
         FullName = "Rare Defense Railgun S",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f97-48b1-8404-6c28d83f17c6"
+        GroupId = "Railguns S"
     },
     {
         FullName = "Exotic Defense Railgun S",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f97-48b1-8404-6c28d83f17c6"
+        GroupId = "Railguns S"
     },
     {
         FullName = "Advanced Heavy Railgun S",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f97-48b1-8404-6c28d83f17c6"
+        GroupId = "Railguns S"
     },
     {
         FullName = "Exotic Heavy Railgun S",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f97-48b1-8404-6c28d83f17c6"
+        GroupId = "Railguns S"
     },
     {
         FullName = "Advanced Precision Railgun S",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f97-48b1-8404-6c28d83f17c6"
+        GroupId = "Railguns S"
     }
 }
 local _items2 = {
@@ -481,551 +563,567 @@ local _items2 = {
         FullName = "Rare Precision Railgun S",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f97-48b1-8404-6c28d83f17c6"
+        GroupId = "Railguns S"
     },
     {
         FullName = "Exotic Precision Railgun S",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f97-48b1-8404-6c28d83f17c6"
+        GroupId = "Railguns S"
     },
     {
         FullName = "Rare Heavy Railgun S",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f97-48b1-8404-6c28d83f17c6"
+        GroupId = "Railguns S"
     },
     {
         FullName = "Exotic Heavy Railgun M",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4c89-8e0c-9250ebb84159"
+        GroupId = "Railguns M"
     },
     {
         FullName = "Rare Heavy Railgun M",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4c89-8e0c-9250ebb84159"
+        GroupId = "Railguns M"
     },
     {
         FullName = "Advanced Heavy Railgun M",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4c89-8e0c-9250ebb84159"
+        GroupId = "Railguns M"
     },
     {
         FullName = "Exotic Defense Railgun M",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4c89-8e0c-9250ebb84159"
+        GroupId = "Railguns M"
     },
     {
         FullName = "Advanced Precision Missile XS",
         Tier = 3,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f90-418c-8267-cb319724d97c"
+        GroupId = "Missiles XS"
     },
     {
         FullName = "Rare Precision Missile XS",
         Tier = 4,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f90-418c-8267-cb319724d97c"
+        GroupId = "Missiles XS"
     },
     {
         FullName = "Exotic Precision Missile XS",
         Tier = 5,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f90-418c-8267-cb319724d97c"
+        GroupId = "Missiles XS"
     },
     {
         FullName = "Advanced Agile Missile L",
         Tier = 3,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f91-4a97-875b-4c3b0238a44e"
+        GroupId = "Missiles L"
     },
     {
         FullName = "Rare Agile Missile L",
         Tier = 4,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f91-4a97-875b-4c3b0238a44e"
+        GroupId = "Missiles L"
     },
     {
         FullName = "Exotic Agile Missile L",
         Tier = 5,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f91-4a97-875b-4c3b0238a44e"
+        GroupId = "Missiles L"
     },
     {
         FullName = "Advanced Defense Missile L",
         Tier = 3,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f91-4a97-875b-4c3b0238a44e"
+        GroupId = "Missiles L"
     },
     {
         FullName = "Rare Defense Missile L",
         Tier = 4,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f91-4a97-875b-4c3b0238a44e"
+        GroupId = "Missiles L"
     },
     {
         FullName = "Exotic Defense Missile L",
         Tier = 5,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f91-4a97-875b-4c3b0238a44e"
+        GroupId = "Missiles L"
     },
     {
         FullName = "Exotic Heavy Missile XS",
         Tier = 5,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f90-418c-8267-cb319724d97c"
+        GroupId = "Missiles XS"
     },
     {
         FullName = "Advanced Heavy Missile L",
         Tier = 3,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f91-4a97-875b-4c3b0238a44e"
+        GroupId = "Missiles L"
     },
     {
         FullName = "Exotic Heavy Missile L",
         Tier = 5,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f91-4a97-875b-4c3b0238a44e"
+        GroupId = "Missiles L"
     },
     {
         FullName = "Advanced Precision Missile L",
         Tier = 3,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f91-4a97-875b-4c3b0238a44e"
+        GroupId = "Missiles L"
     },
     {
         FullName = "Rare Precision Missile L",
         Tier = 4,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f91-4a97-875b-4c3b0238a44e"
+        GroupId = "Missiles L"
     },
     {
         FullName = "Exotic Precision Missile L",
         Tier = 5,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f91-4a97-875b-4c3b0238a44e"
+        GroupId = "Missiles L"
     },
     {
         FullName = "Advanced Agile Missile M",
         Tier = 3,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f92-4ba5-88f6-61969b8ccce1"
+        GroupId = "Missiles M"
     },
     {
         FullName = "Rare Agile Missile M",
         Tier = 4,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f92-4ba5-88f6-61969b8ccce1"
+        GroupId = "Missiles M"
     },
     {
         FullName = "Exotic Agile Missile M",
         Tier = 5,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f92-4ba5-88f6-61969b8ccce1"
+        GroupId = "Missiles M"
     },
     {
         FullName = "Advanced Defense Missile M",
         Tier = 3,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f92-4ba5-88f6-61969b8ccce1"
+        GroupId = "Missiles M"
     },
     {
         FullName = "Rare Defense Missile M",
         Tier = 4,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f92-4ba5-88f6-61969b8ccce1"
+        GroupId = "Missiles M"
     },
     {
         FullName = "Rare Heavy Missile L",
         Tier = 4,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f91-4a97-875b-4c3b0238a44e"
+        GroupId = "Missiles L"
     },
     {
         FullName = "Exotic Defense Missile M",
         Tier = 5,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f92-4ba5-88f6-61969b8ccce1"
+        GroupId = "Missiles M"
     },
     {
         FullName = "Rare Heavy Missile XS",
         Tier = 4,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f90-418c-8267-cb319724d97c"
+        GroupId = "Missiles XS"
     },
     {
         FullName = "Exotic Defense Missile XS",
         Tier = 5,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f90-418c-8267-cb319724d97c"
+        GroupId = "Missiles XS"
     },
     {
         FullName = "Advanced Precision Laser M",
         Tier = 3,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f61-4484-81b6-b3ecf3927f86"
+        GroupId = "Lasers M"
     },
     {
         FullName = "Rare Precision Laser M",
         Tier = 4,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f61-4484-81b6-b3ecf3927f86"
+        GroupId = "Lasers M"
     },
     {
         FullName = "Exotic Precision Laser M",
         Tier = 5,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f61-4484-81b6-b3ecf3927f86"
+        GroupId = "Lasers M"
     },
     {
         FullName = "Advanced Agile Laser S",
         Tier = 3,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f62-42ba-8729-4ac5979dc3b4"
+        GroupId = "Lasers S"
     },
     {
         FullName = "Rare Agile Laser S",
         Tier = 4,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f62-42ba-8729-4ac5979dc3b4"
+        GroupId = "Lasers S"
     },
     {
         FullName = "Exotic Agile Laser S",
         Tier = 5,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f62-42ba-8729-4ac5979dc3b4"
+        GroupId = "Lasers S"
     },
     {
         FullName = "Advanced Defense Laser S",
         Tier = 3,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f62-42ba-8729-4ac5979dc3b4"
+        GroupId = "Lasers S"
     },
     {
         FullName = "Rare Defense Laser S",
         Tier = 4,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f62-42ba-8729-4ac5979dc3b4"
+        GroupId = "Lasers S"
     },
     {
         FullName = "Exotic Defense Laser S",
         Tier = 5,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f62-42ba-8729-4ac5979dc3b4"
+        GroupId = "Lasers S"
     },
     {
         FullName = "Advanced Heavy Missile XS",
         Tier = 3,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f90-418c-8267-cb319724d97c"
+        GroupId = "Missiles XS"
     },
     {
         FullName = "Advanced Heavy Laser S",
         Tier = 3,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f62-42ba-8729-4ac5979dc3b4"
+        GroupId = "Lasers S"
     },
     {
         FullName = "Exotic Heavy Laser S",
         Tier = 5,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f62-42ba-8729-4ac5979dc3b4"
+        GroupId = "Lasers S"
     },
     {
         FullName = "Advanced Precision Laser S",
         Tier = 3,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f62-42ba-8729-4ac5979dc3b4"
+        GroupId = "Lasers S"
     },
     {
         FullName = "Rare Precision Laser S",
         Tier = 4,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f62-42ba-8729-4ac5979dc3b4"
+        GroupId = "Lasers S"
     },
     {
         FullName = "Exotic Precision Laser S",
         Tier = 5,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f62-42ba-8729-4ac5979dc3b4"
+        GroupId = "Lasers S"
     },
     {
         FullName = "Advanced Agile Missile XS",
         Tier = 3,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f90-418c-8267-cb319724d97c"
+        GroupId = "Missiles XS"
     },
     {
         FullName = "Rare Agile Missile XS",
         Tier = 4,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f90-418c-8267-cb319724d97c"
+        GroupId = "Missiles XS"
     },
     {
         FullName = "Exotic Agile Missile XS",
         Tier = 5,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f90-418c-8267-cb319724d97c"
+        GroupId = "Missiles XS"
     },
     {
         FullName = "Advanced Defense Missile XS",
         Tier = 3,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f90-418c-8267-cb319724d97c"
+        GroupId = "Missiles XS"
     },
     {
         FullName = "Rare Defense Missile XS",
         Tier = 4,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f90-418c-8267-cb319724d97c"
+        GroupId = "Missiles XS"
     },
     {
         FullName = "Rare Heavy Laser S",
         Tier = 4,
         Description = "Lasers are a medium-range balanced weapon type capable of producing electromagnetic and thermic damage types.",
-        GroupId = "08d8a31f-4f62-42ba-8729-4ac5979dc3b4"
+        GroupId = "Lasers S"
     },
     {
         FullName = "Advanced Heavy Missile M",
         Tier = 3,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f92-4ba5-88f6-61969b8ccce1"
+        GroupId = "Missiles M"
     },
     {
         FullName = "Exotic Heavy Missile M",
         Tier = 5,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f92-4ba5-88f6-61969b8ccce1"
+        GroupId = "Missiles M"
     },
     {
         FullName = "Advanced Precision Railgun XS",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f95-4404-84e5-b689b441fd9d"
+        GroupId = "Railguns XS"
     },
     {
         FullName = "Rare Precision Railgun XS",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f95-4404-84e5-b689b441fd9d"
+        GroupId = "Railguns XS"
     },
     {
         FullName = "Exotic Precision Railgun XS",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f95-4404-84e5-b689b441fd9d"
+        GroupId = "Railguns XS"
     },
     {
         FullName = "Advanced Agile Railgun L",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4091-805d-53511d91cd09"
+        GroupId = "Railguns L"
     },
     {
         FullName = "Rare Agile Railgun L",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4091-805d-53511d91cd09"
+        GroupId = "Railguns L"
     },
     {
         FullName = "Exotic Agile Railgun L",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4091-805d-53511d91cd09"
+        GroupId = "Railguns L"
     },
     {
         FullName = "Advanced Defense Railgun L",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4091-805d-53511d91cd09"
+        GroupId = "Railguns L"
     },
     {
         FullName = "Rare Defense Railgun L",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4091-805d-53511d91cd09"
+        GroupId = "Railguns L"
     },
     {
         FullName = "Exotic Defense Railgun L",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4091-805d-53511d91cd09"
+        GroupId = "Railguns L"
     },
     {
         FullName = "Exotic Heavy Railgun XS",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f95-4404-84e5-b689b441fd9d"
+        GroupId = "Railguns XS"
     },
     {
         FullName = "Advanced Heavy Railgun L",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4091-805d-53511d91cd09"
+        GroupId = "Railguns L"
     },
     {
         FullName = "Exotic Heavy Railgun L",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4091-805d-53511d91cd09"
+        GroupId = "Railguns L"
     },
     {
         FullName = "Advanced Precision Railgun L",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4091-805d-53511d91cd09"
+        GroupId = "Railguns L"
     },
     {
         FullName = "Rare Precision Railgun L",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4091-805d-53511d91cd09"
+        GroupId = "Railguns L"
     },
     {
         FullName = "Exotic Precision Railgun L",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4091-805d-53511d91cd09"
+        GroupId = "Railguns L"
     },
     {
         FullName = "Advanced Agile Railgun M",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4c89-8e0c-9250ebb84159"
+        GroupId = "Railguns M"
     },
     {
         FullName = "Rare Agile Railgun M",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4c89-8e0c-9250ebb84159"
+        GroupId = "Railguns M"
     },
     {
         FullName = "Exotic Agile Railgun M",
         Tier = 5,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4c89-8e0c-9250ebb84159"
+        GroupId = "Railguns M"
     },
     {
         FullName = "Advanced Defense Railgun M",
         Tier = 3,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4c89-8e0c-9250ebb84159"
+        GroupId = "Railguns M"
     },
     {
         FullName = "Rare Defense Railgun M",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4c89-8e0c-9250ebb84159"
+        GroupId = "Railguns M"
     },
     {
         FullName = "Rare Heavy Railgun L",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f96-4091-805d-53511d91cd09"
+        GroupId = "Railguns L"
     },
     {
         FullName = "Rare Heavy Missile M",
         Tier = 4,
         Description = "Missile Pods are a close range high-damage weapon type able to fire antimatter and kinetic damage types.",
-        GroupId = "08d8a31f-4f92-4ba5-88f6-61969b8ccce1"
+        GroupId = "Missiles M"
     },
     {
         FullName = "Rare Heavy Railgun XS",
         Tier = 4,
         Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
-        GroupId = "08d8a31f-4f95-4404-84e5-b689b441fd9d"
+        GroupId = "Railguns XS"
     }
 }
 
 
-
+rslib = require("rslib")
 
 
 -- Example usage:
 -- This would all go in Unit.Start
 
--- Set some default values for both tables we're about to create
-Table.HeaderRadius = 0
-Table.ScrollButtonHeight = "10%"
-Table.Height = "45%"
-Table.ColumnSpacing = 0 -- Keep this 0 so we can 'merge' our category rows
-Table.RowSpacing = 0
-Table.CategoryTabAmount = 40
+-- We are only writing to one screen, so we don't need to define a Canvas.
+-- If I wanted to write to a second screen, after setting up the first one, I'd save a `canvas1 = DefaultCanvas`, then `DefaultCanvas = Canvas:new()`
+-- After setting up the second canvas, I'd save it as canvas2, then in Update call both canvas1:Update(screen1) and canvas2:Update(screen2)
+-- You could also just create a canvas2 and pass it to every creation method, but that's awkward
 
-screenTable = Table:new("Table1") -- A unique name, for multi-table support
+-- Setup some styles for both tables we're about to create
+local headerStyle = Style:new()
+headerStyle.BoxRadius = 0
+headerStyle.FillColor = "#FFF"
+headerStyle.StrokeWidth = 2
+headerStyle.FontName = "Play-Bold"
+headerStyle.FontSize = 30
+headerStyle.StrokeColor = "#000"
+
+TableDefaults.HeaderStyle = headerStyle.ID -- Set this as the default style when making a new table
+-- Note that for now you have to just remember to only set IDs, never nest objects, or use the functions (but they don't exist on DefaultTable...)
+-- Later I might be able to intercept and fix it and let you do it however
+
+-- Set some more defaults (you could always set these on the table after making it)
+TableDefaults.ScrollButtonHeight = "10%"
+TableDefaults.Height = "45%"
+TableDefaults.ColumnSpacing = 0 -- Keep this 0 so we can 'merge' our category rows
+TableDefaults.RowSpacing = 0
+TableDefaults.CategoryTabAmount = 40
+
+-- Setup some styles for our rows
+local rowStyle = Style:new()
+rowStyle.StrokeColor="#000"
+
+local categoryStyle = Style:new()
+categoryStyle.FontSize = 25
+categoryStyle.FillColor = "#DDFFDD"
+categoryStyle.HoverFillColor = "#0F0"
+categoryStyle.FontName = "Play-Bold"
+categoryStyle.BoxRadius = 0
+categoryStyle.StrokeWidth = 0
+categoryStyle.PaddingBottom = 2
+categoryStyle.Wrap = false
+
+
+
+-- Create table
+screenTable = Table:new() 
 screenTable.Y = "50%"
 
--- Set some defaults for our rows to have the appearance of spacing
-Row.StrokeColor="#000"
 
-screenTable.Columns = {
+-- Add our columns
+screenTable:AddColumns({
 	Column:new("Name", "35%", "FullName"),
 	Column:new("Tier", "10%"),
 	Column:new("Description", "50%")
-}
+})
 
 local groups = {}
 
 -- Dynamically generate 'categories' via GroupId of our data
 for k,v in ipairs(_items1) do
 	if not groups[v.GroupId] then
-		local category = Row:new({FullName=v.GroupId})
-		category.FontSize = 25
-		category.FillColor = "#DDFFDD"
-		category.HoverFillColor = "#0F0"
-		category.FontName = "Play-Bold"
-		category.BoxRadius = 0
-		category.StrokeWidth = 0
-		category.Padding.Bottom = 2
-		category.Wrap = false
-		groups[v.GroupId] = category
-		screenTable:AddRow(category)
+		local category = Row:new({FullName=v.GroupId}) -- Create proxy row for category
+		category:SetStyle(categoryStyle) -- Set style
+		groups[v.GroupId] = category -- Setup map
+		screenTable:AddRow(category) -- Add to table
 	end
-	groups[v.GroupId]:AddRow(v)
+	groups[v.GroupId]:AddRow(Row:new(v, rowStyle)) -- Create and add a new row to mapped category, with data v from _items1, using rowStyle
 end
 
-table2 = Table:new("Table2") -- A unique name, for multi-table support
+table2 = Table:new() -- Second table, for second set of data
 
-table2.Columns = {
+table2:AddColumns({
 	Column:new("Name", "35%", "FullName"),
 	Column:new("Tier", "10%"),
 	Column:new("Description", "50%")
-}
+})
 
 groups = {}
 
 for k,v in ipairs(_items2) do
 	if not groups[v.GroupId] then
 		local category = Row:new({FullName=v.GroupId})
-		category.FontSize = 25
-		category.FillColor = "#DDFFDD"
-		category.FontName = "Play-Bold"
-		category.StrokeWidth = 0
-		category.BoxRadius = 0
-		category.HoverFillColor = "#0F0"
-		category.Padding.Bottom = 2
-		category.Wrap = false
+		category:SetStyle(categoryStyle)
 		groups[v.GroupId] = category
 		table2:AddRow(category)
 	end
-	groups[v.GroupId]:AddRow(v)
+	groups[v.GroupId]:AddRow(Row:new(v, rowStyle))
 end
 
 
-Table.OnClick = function(self, clickedRow)
+DefaultCanvas.OnClick = function(clickedRow)
 	system.print(clickedRow.Data.FullName)
 end
 
-Tables = {screenTable, table2}
-
--- Data looks like this: 
---{
---	FullName = "Rare Heavy Railgun XS",
---	Tier = 4,
---	Description = "Railguns are a long-range weapon type able to fire antimatter and electromagnetic damage types.",
---	GroupId = "08d8a31f-4f95-4404-84e5-b689b441fd9d"
---}
+-- Now just add them both to the canvas
+DefaultCanvas:Add(screenTable)
+DefaultCanvas:Add(table2)
+-- Note that each object in the canvas gets its own layer - you should use large, nested objects, because you can only have 8 layers
+-- And tables currently use two layers each (can be reduced later)
+-- May later add a layer parameter here so you can sort of define them yourself
