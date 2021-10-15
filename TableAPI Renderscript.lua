@@ -117,6 +117,16 @@ if not init then
 		f()
 		return t
 	end
+
+	function tryDeserialize(s)
+        local f=load('t='..s)
+        if f then
+			f()
+            return true, t
+        else
+            return false    
+        end
+     end
 	
 	function GetWordWrap(text, font, width)
 		if type(text) == "table" then -- We already wrapped it
@@ -211,39 +221,50 @@ if not init then
 				if cursorX >= x and cursorX <= x + Table.Width - Table.ScrollWidth and cursorY >= y and cursorY <= y + row.Height then
 					if cursorReleased then
 						clicked = true
-						local heightChange = 0
-						local isVisible = false
-						for i=1, #row.Children do
-							local child = Get(row.Children[i])
-							local childStyle = Get(child.Style)
-							local modifier = child.Height + Table.RowSpacing + childStyle.PaddingTop + childStyle.PaddingBottom
-							child.Visible = not child.Visible
-							if not child.Visible then
-								heightChange = heightChange - modifier
-							else
-								heightChange = heightChange + modifier
+						-- If Table.OutputRows already contains this row, we don't want to do this again
+						-- Which occurs if the frozen one is overtop the regular one
+						local skip = false
+						for k,v in ipairs(Table.OutputRows) do
+							if v.ID == row.ID then
+								skip = true
 							end
 						end
-						
-						Table.TotalHeight = Table.TotalHeight + heightChange
-						
-						-- Find the column that was clicked
-						local colX = Table.X
-						local columnKey = ""
-						for _,colID in ipairs(Table.Columns) do
-							local col = Get(colID)
-							if cursorX >= colX and cursorX <= colX+col.Width then
-								columnKey = col.Key
-								break
+
+						if not skip then
+							local heightChange = 0
+							local isVisible = false
+							for i=1, #row.Children do
+								local child = Get(row.Children[i])
+								local childStyle = Get(child.Style)
+								local modifier = child.Height + Table.RowSpacing + childStyle.PaddingTop + childStyle.PaddingBottom
+								child.Visible = not child.Visible
+								if not child.Visible then
+									heightChange = heightChange - modifier
+								else
+									heightChange = heightChange + modifier
+								end
 							end
-							colX = colX + col.Width + Table.ColumnSpacing
+							
+							Table.TotalHeight = Table.TotalHeight + heightChange
+							
+							-- Find the column that was clicked
+							local colX = Table.X
+							local columnKey = ""
+							for _,colID in ipairs(Table.Columns) do
+								local col = Get(colID)
+								if cursorX >= colX and cursorX <= colX+col.Width then
+									columnKey = col.Key
+									break
+								end
+								colX = colX + col.Width + Table.ColumnSpacing
+							end
+							
+							-- Set some identifying info for them
+							row.TableName = Table.Name
+							row.ColumnKey = columnKey
+							-- And pass it to the output as a click
+							Table.OutputRows[#Table.OutputRows+1] = row
 						end
-						
-						-- Set some identifying info for them
-						row.TableName = Table.Name
-						row.ColumnKey = columnKey
-						-- And pass it to the output as a click
-						Table.OutputRows[#Table.OutputRows+1] = row
 						--SetOutputRow(row)
 					end
 					hovered = true
@@ -324,13 +345,27 @@ if not init then
 		return x,y
 	end
 	
-	function SetRowHeight(Table, row, tabValue)
+	function SetRowHeight(Table, row, tabValue, oldData)
 
 		local style = Get(row.Style)
 
 		row.Height = style.MinHeight
 
 		if not tabValue then tabValue = 0 end
+
+		if oldData then
+			-- Figure out tabValue for an update
+			tabValue = 0
+			local parent = row.Parent
+			while parent ~= nil do
+				local p = Get(parent)
+				if p and p.Type == "Table" then
+					break
+				end
+				tabValue = tabValue + 1
+				parent = p.Parent -- This could throw if the ID doesn't exist and the Get fails, which should never happen... 
+			end
+		end
 		
 		local font = fonts[style.FontName .. style.FontSize] or loadFont(style.FontName, style.FontSize)
 		fonts[style.FontName .. style.FontSize] = font
@@ -359,10 +394,20 @@ if not init then
 				end
 			end
 		end
+		if oldData then
+			local oldStyle = style
+			if oldData[style.ID] then
+				oldStyle = oldData[style.ID]
+			end
+			Table.TotalHeight = Table.TotalHeight - oldData[row.ID].Height - oldStyle.PaddingTop - oldStyle.PaddingBottom - Table.RowSpacing
+		end
 		Table.TotalHeight = Table.TotalHeight + row.Height + style.PaddingTop + style.PaddingBottom + Table.RowSpacing
 		tabValue = tabValue + 1
-		for rn,rID in ipairs(row.Children) do
-			SetRowHeight(Table, Get(rID), tabValue)
+
+		if not oldData then
+			for rn,rID in ipairs(row.Children) do
+				SetRowHeight(Table, Get(rID), tabValue)
+			end
 		end
 		
 		style.FillColor = GetColors(style.FillColor)
@@ -390,6 +435,78 @@ if not init then
 	function Get(ID)
 		return Canvas.Components[ID]
 	end
+
+	function FixColumn(column, Table, titleFont, titleStyle)
+		column.Width = GetSizeFromPercent(column.Width, Table.Width) - Table.ColumnSpacing - titleStyle.StrokeWidth
+		column.Name = GetWordWrap(column.Name, titleFont, column.Width)
+		
+		local colHeight = 0
+		for _,txt in ipairs(column.Name) do
+			local tw, th = getTextBounds(titleFont, txt)
+			th = th + Table.TextPadY*2
+			colHeight = colHeight + th
+		end
+		
+		if colHeight > Table.TitleHeight then
+			Table.TitleHeight = colHeight
+		end
+	end
+
+	function FixTable(Table)
+
+		-- Initialization here: Convert all percentages to numbers
+		-- And convert all text to wrapped
+		Table.RowHeights = {}
+		Table.TitleHeight = 0
+		
+		Table.Width = GetSizeFromPercent(Table.Width, screenWidth)
+		Table.Height = GetSizeFromPercent(Table.Height, screenHeight)
+		Table.ScrollWidth = GetSizeFromPercent(Table.ScrollWidth,Table.Width)
+		Table.ScrollButtonHeight = GetSizeFromPercent(Table.ScrollButtonHeight, Table.Height)
+		Table.X = GetSizeFromPercent(Table.X, screenWidth)
+		Table.Y = GetSizeFromPercent(Table.Y, screenHeight)
+		
+
+		local titleStyle = Get(Table.HeaderStyle)
+		local titleFont = fonts[titleStyle.FontName .. titleStyle.FontSize] or loadFont(titleStyle.FontName, titleStyle.FontSize)
+		fonts[titleStyle.FontName .. titleStyle.FontSize] = titleFont
+		
+		titleStyle.FillColor = GetColors(titleStyle.FillColor)
+		titleStyle.TextColor = GetColors(titleStyle.TextColor)
+		titleStyle.StrokeColor = GetColors(titleStyle.StrokeColor)
+
+		Table.ScrollActiveColor = GetColors(Table.ScrollActiveColor)
+		Table.ScrollInactiveColor = GetColors(Table.ScrollInactiveColor)
+		Table.ScrollStrokeColor = GetColors(Table.ScrollStrokeColor)
+		
+		Table.ScrollAmount = 0
+
+		for _, columnID in pairs(Table.Columns) do
+
+			local column = Get(columnID)
+
+			FixColumn(column, Table, titleFont, titleStyle)
+		end
+		
+		Table.TotalHeight = Table.TitleHeight + Table.RowSpacing*2
+		
+		for rowNum, rowID in ipairs(Table.Rows) do
+			SetRowHeight(Table, Get(rowID))
+		end
+	end
+
+	function GetParentTable(component)
+		local parent = component.Parent
+		while parent ~= nil do
+			local p = Get(parent)
+			if p and p.Type == "Table" then
+				break
+			end
+			parent = p.Parent -- This could throw if the ID doesn't exist and the Get fails, which should never happen... 
+		end
+
+		return Get(parent)
+	end
 end
 
 
@@ -412,75 +529,111 @@ if input.T then
 	TableData = TableData .. input.T
 end
 if input.F then
-	Canvas = deserialize(TableData)
-	-- Not quite the same as before... 
-	-- Gonna be a bit hard actually
-	-- Canvas only contains Canvas.Components, an indexed map of IDs vs components
-	-- We need to draw all top-level components
-	-- Okay now it contains Canvas.RenderedComponents, an indexed list of IDs that need to be drawn
 
-	-- Unsure if I want a Type on every component, but for now, Tables have one
-	for k,v in ipairs(Canvas.RenderedComponents) do
-		local component = Canvas.Components[v]
-		if component.Type and component.Type == "Table" then
-			local Table = component
-
-			-- Initialization here: Convert all percentages to numbers
-			-- And convert all text to wrapped
-			Table.RowHeights = {}
-			Table.TitleHeight = 0
+	local success, input = tryDeserialize(TableData)
+	
+	if input and input.Update and Canvas then
+		-- We should already have a Canvas, and we just need to update these components
+		for k,v in pairs(input.Update) do
 			
-			Table.Width = GetSizeFromPercent(Table.Width, screenWidth)
-			Table.Height = GetSizeFromPercent(Table.Height, screenHeight)
-			Table.ScrollWidth = GetSizeFromPercent(Table.ScrollWidth,Table.Width)
-			Table.ScrollButtonHeight = GetSizeFromPercent(Table.ScrollButtonHeight, Table.Height)
-			Table.X = GetSizeFromPercent(Table.X, screenWidth)
-			Table.Y = GetSizeFromPercent(Table.Y, screenHeight)
-			
+			local oldComp = Get(k)
+			-- Set values (and values of values? TODO: Make this recursive)
+			for k2, v2 in pairs(oldComp) do
+				if v[k2] then oldComp[k2] = v[k2] end
+			end
 
-			local titleStyle = Get(Table.HeaderStyle)
-			local titleFont = fonts[titleStyle.FontName .. titleStyle.FontSize] or loadFont(titleStyle.FontName, titleStyle.FontSize)
-			fonts[titleStyle.FontName .. titleStyle.FontSize] = titleFont
-			
-			titleStyle.FillColor = GetColors(titleStyle.FillColor)
-			titleStyle.TextColor = GetColors(titleStyle.TextColor)
-			titleStyle.StrokeColor = GetColors(titleStyle.StrokeColor)
-
-			Table.ScrollActiveColor = GetColors(Table.ScrollActiveColor)
-			Table.ScrollInactiveColor = GetColors(Table.ScrollInactiveColor)
-			Table.ScrollStrokeColor = GetColors(Table.ScrollStrokeColor)
-			
-			Table.ScrollAmount = 0
-
-			for _, columnID in pairs(Table.Columns) do
-
-				local column = Get(columnID)
-
-				column.Width = GetSizeFromPercent(column.Width, Table.Width) - Table.ColumnSpacing - titleStyle.StrokeWidth
-				column.Name = GetWordWrap(column.Name, titleFont, column.Width)
-				
-				local colHeight = 0
-				for _,txt in ipairs(column.Name) do
-					local tw, th = getTextBounds(titleFont, txt)
-					th = th + Table.TextPadY*2
-					colHeight = colHeight + th
-				end
-				
-				if colHeight > Table.TitleHeight then
-					Table.TitleHeight = colHeight
+			if oldComp.Type == "Row" then
+				-- Resizing should be done, but isn't because I can't figure out how to compare newsize to oldsize without deepcopying the old object
+				-- Just word wrap data
+				for k2, v2 in pairs(oldComp.Data) do
+					local style = Get(oldComp.Style)
+					local font = fonts[style.FontName .. style.FontSize] or loadFont(style.FontName, style.FontSize)
+					fonts[style.FontName .. style.FontSize] = font
+					local table = GetParentTable(oldComp)
+					-- Jesus fucking christ this is so annoying
+					local column = nil
+					for k3, v3 in pairs(table.Columns) do
+						v3 = Get(v3)
+						if v3.Key == k2 then column = v3 break end
+					end
+					-- And the fucking tab value too, jesus fucking christ why 
+					tabValue = 0
+					local parent = oldComp.Parent
+					while parent ~= nil do
+						local p = Get(parent)
+						if p and p.Type == "Table" then
+							break
+						end
+						tabValue = tabValue + 1
+						parent = p.Parent -- This could throw if the ID doesn't exist and the Get fails, which should never happen... 
+					end
+					if column then
+						oldComp.Data[k2] = GetWordWrap(v2, font, column.Width - tabValue * table.CategoryTabAmount)
+					end
+					-- And now we would probably compare the number of lines in this WordWrap, vs the number in original
+					-- And adjust height accordingly... 
 				end
 			end
-			
-			Table.TotalHeight = Table.TitleHeight + Table.RowSpacing*2
-			
-			for rowNum, rowID in ipairs(Table.Rows) do
-				SetRowHeight(Table, Get(rowID))
+			--Canvas.Components[k] = v
+		end
+		-- We update them all, then update our calculated values
+		--for k,v in pairs(input.Update) do
+
+			-- And then parse everything that needs parsing...
+			-- Like rows will need to recalc size, and adjust Table.TotalHeight based on their new size
+			-- Columns and rows will need their words wrapped
+			-- And tables will need to redo the entire sequence we have below
+
+			-- I don't think FixEtc is going to work right
+		--	if v.Type == "Row" then
+				-- For a row, we just need to adjust Table.TotalHeight for it, and Row.Height
+				-- We can determine its TabValue by how many nested parents it has...
+
+				-- We also need to ensure everything is set before we start adjusting
+				-- Because this row may have a new Style update that we wouldn't get until later...
+
+				-- Though also, we need to find its table
+
+		--		local parent = GetParentTable(v)
+
+		--		if parent then
+		--			SetRowHeight(parent, v, 0, oldData)
+		--		end
+		--		logMessage(rslib.toString(v))
+		--	elseif v.Type == "Style" then
+		--		-- We need to find all rows using this style and recalc their heights
+		--		for k2,v2 in ipairs(Canvas.Components) do
+		--			if v2.Type == "Row" and v2.Style == v.ID then
+		--				local parent = GetParentTable(v2)
+		--				SetRowHeight(parent, v2, 0, oldData)
+		--			end
+		--		end
+
+		--	elseif v.Type == "Table" then
+				-- This one's easy, we can just FixTable
+		--		FixTable(v)
+		--	end
+
+		--end
+
+	elseif input then -- If it's not an update it's a full set
+		Canvas = input
+		-- Unsure if I want a Type on every component, but for now, Tables have one
+		for k,v in ipairs(Canvas.RenderedComponents) do
+			local component = Canvas.Components[v]
+			if component.Type and component.Type == "Table" then
+				local Table = component
+
+				FixTable(Table)
 			end
 		end
 	end
 	-- And last, reorder the RenderedComponents, so that the earlier Y values are first
 	-- Since that reduces overlap
-	table.sort(Canvas.RenderedComponents, function(a,b) return Get(a).Y < Get(b).Y end)
+	if Canvas then
+		table.sort(Canvas.RenderedComponents, function(a,b) return Get(a).Y < Get(b).Y end)
+	end
+	
 end
 
 if Canvas then
@@ -569,7 +722,7 @@ if Canvas then
 			y = y + Table.TitleHeight + Table.RowSpacing
 			x = Table.X
 
-			-- Or probably the easiest.  Each table stores a .FirstVisibleRow (int index of course), tracking the first row that passes the title
+			-- Each table stores a .FirstVisibleRow, tracking the first row that passes the title
 			-- And we just always draw the parents of that, if it has them, after drawing all the rest
 			Table.FirstVisibleRow = nil
 			Table.OutputRows = {} -- This catches things if multiple rows were clicked (with our overlapping frozen rows)
@@ -586,33 +739,32 @@ if Canvas then
 				end
 			end
 			
-			-- Draw frozen rows on top, all parents of Table.FirstVisibleRow
+			-- Draw frozen rows on top - frozen rows are all parents of Table.FirstVisibleRow
 
-			if Table.FreezeTopRows and Table.FirstVisibleRow then -- If there are no rows, this could still be nil
-				-- Find all parents... 
+			if Table.FreezeTopRows and Table.FirstVisibleRow then -- If there are no rows, FirstVisibleRow could still be nil
+				-- Find all parents of FirstVisibleRow... 
 				local parents = {} -- Will be a collection of the IDs
 				local parent = Table.FirstVisibleRow.Parent
 				while(parent) do
 					parents[#parents+1] = parent
 					parent = Get(parent).Parent
 				end
-				-- Also, if it has children, draw itself?  Only if they're visible... 
+				-- Also, if it has children, draw itself?  Only if they're visible... TODO: Check if any are visible?  Or assume all match the first?
 				if #Table.FirstVisibleRow.Children > 0 and Get(Table.FirstVisibleRow.Children[1]).Visible then
 					parents[#parents+1] = Table.FirstVisibleRow.ID
 				end
 
 				-- Set y to start drawing these just below the title
 				y = Table.Y + Table.TitleHeight + Table.RowSpacing
-				-- No no... set it to follow FirstVisibleRow, so that y = firstVisibleRow.y+firstVisibleRow.Height-thisRow.Height
-
 
 				-- Iterate in reverse order to draw highest order parents first
 				for i=#parents, 1, -1 do
-					x,y = DrawRow(Table, Get(parents[i]), x, y, titleLayer, font, cursorReleased, cursorX, cursorY, 0, false)
+					x,y = DrawRow(Table, Get(parents[i]), x, y, titleLayer, font, cursorReleased, cursorX, cursorY, 0, false) -- This false means don't draw children
 				end
 			end
 
 			-- Now check Table.OutputRows - if any have children, return that one, otherwise return the first
+			-- This ensures we don't trigger things that are underneath the categories if they click a frozen category
 			local rowWithChildren = nil
 			for k,v in ipairs(Table.OutputRows) do
 				if #v.Children > 0 then
@@ -637,7 +789,7 @@ if Canvas then
 			
 			addBox(titleLayer, x, y, Table.ScrollWidth, Table.Height)
 			
-			-- Buttons at the top
+			-- Button at the top
 			local sac = Table.ScrollActiveColor
 			setNextFillColor(titleLayer, sac[1], sac[2], sac[3], sac[4])
 			setNextStrokeColor(titleLayer, ssc[1], ssc[2], ssc[3], ssc[4])
@@ -669,11 +821,14 @@ if Canvas then
 			
 			
 			local heightPercent = 1 / (Table.TotalHeight/Table.Height)
-			local scrollHeight = math.min((Table.Height - buttonHeight*2 - Table.ScrollStrokeWidth*4) * heightPercent,Table.Height - buttonHeight*2 - Table.ScrollStrokeWidth*4)
+			-- Include Scrollstrokes because they extend beyond the usual bounds and it can look awkward when they sortof overlap eachother
+			-- Clamp to prevent scrollbar from being large than scrollbar area
+			local scrollBarArea = Table.Height - buttonHeight*2 - Table.ScrollStrokeWidth*4
+			local scrollHeight = math.min(scrollBarArea * heightPercent, scrollBarArea)
 			
 			-- And then, figure out how to place it.  
 			-- I think we basically place it at scrollPercent*availableSpace-ScrollHeight from the top
-			y = Table.Y + buttonHeight + Table.ScrollStrokeWidth*2 + (Table.Height - buttonHeight*2 - Table.ScrollStrokeWidth*4 - scrollHeight)*scrollPercent
+			y = Table.Y + buttonHeight + Table.ScrollStrokeWidth*2 + (scrollBarArea - scrollHeight)*scrollPercent
 			
 			addBox(titleLayer, x, y, Table.ScrollWidth, scrollHeight)
 			
@@ -726,7 +881,7 @@ if Canvas then
 				
 				--y = Table.Y + buttonHeight + (screenHeight - buttonHeight*2 - scrollHeight)*scrollPercent
 				
-				local newScrollPercent = (cursorY-Table.ScrollOffsetY-buttonHeight-Table.Y)/(Table.Height-buttonHeight*2-scrollHeight)
+				local newScrollPercent = (cursorY-Table.ScrollOffsetY-buttonHeight-Table.Y)/(scrollBarArea-scrollHeight)
 				Table.ScrollAmount = newScrollPercent * (Table.TotalHeight-Table.Height)
 			end
 		end	
