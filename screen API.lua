@@ -152,6 +152,14 @@ function Canvas:new()
     o.UpdateJson = ""
     o.OutputData = ""
 
+    o.ComponentsUpdating = false
+    o.NeedsComponentUpdate = false
+    o.ComponentUpdatePosition = 1
+    o.ComponentUpdateJson = "" -- These are used to update individual components
+
+    o.UpdateComponents = {} -- This holds components that need to be sent to update an existing, already sent table
+    -- It should be KVP where the key is the ID of the component to update
+
     o.RenderedComponents = {} -- This holds everything that was directly added to the Canvas for rendering
 
     o.Components = {} -- This holds everything ever created; it always adds itself here, where its ID = the key
@@ -162,18 +170,29 @@ end
 DefaultCanvas = Canvas:new() -- This will be given to anything created without a specified canvas, and you can set it if you want
 -- Or just use it
 
+function Canvas:UpdateComponent(newComponent)
+    self.UpdateComponents[newComponent.ID] = newComponent
+end
+
 function Canvas:Update(screen)
 
 	local data = {}
 	data.SW = system.getMouseWheel() -- Needs scroll wheel data every frame
 	
-    if self.NeedsUpdate then
+    if self.NeedsUpdate and not self.Updating then
         self.UpdatePosition = 1
         self.UpdateJson = serialize({Components=self.Components, RenderedComponents=self.RenderedComponents})
         self.NeedsUpdate = false
+        self.Updating = true
         -- We should also probably iterate all of it to make sure everything that should be linked by an ID, is, in case they set something
         -- But that may be a lot of processing.
         system.print("Sending " .. string.len(self.UpdateJson) .. " chars of data")
+    elseif self.NeedsComponentUpdate and not self.Updating then -- Wait til it's done before we send the next batch
+        self.UpdatePosition = 1
+        self.UpdateJson = serialize({Update=self.UpdateComponents})
+        self.UpdateComponents = {}
+        self.NeedsComponentUpdate = false
+        self.Updating = true
     end
 
     local jsonLength = string.len(self.UpdateJson)
@@ -187,6 +206,7 @@ function Canvas:Update(screen)
         if jsonLength - self.UpdatePosition < numAllowed then
             data.T = string.sub(self.UpdateJson, self.UpdatePosition)
             data.F = 1
+            self.Updating = false
         else -- Since it's inclusive we take from 1 to 920+1, which is 921 entries
             data.T = string.sub(self.UpdateJson, self.UpdatePosition, self.UpdatePosition+numAllowed-1)
         end
@@ -214,7 +234,7 @@ function Canvas:Update(screen)
 end
 
 function Canvas:Get(componentID)
-    return self.components[component.ID]
+    return self.Components[componentID]
 end
 
 function Canvas:Add(component)
@@ -223,7 +243,7 @@ end
 
 
 
-Column = { Width="20%", Name="", Key=""}
+Column = {}
 
 function Column:new(name, width, key, canvas)
 	o = {}
@@ -232,6 +252,7 @@ function Column:new(name, width, key, canvas)
 	o.Name = name or ""
 	o.Key = key or o.Name
     o.Width = width or "20%"
+    o.Type = "Column"
 
     local c = canvas or DefaultCanvas
     o.ID = #c.Components+1
@@ -248,6 +269,7 @@ function Style:new(canvas)
     o = {}
 	setmetatable(o, self)
 	self.__index = self
+    o.Type = "Style"
     -- These need to be fully qualified to defaults
     for k,v in pairs(StyleDefaults) do
         o[k] = v
@@ -273,6 +295,7 @@ function Row:new(data, style, parent, canvas)
 	o.Children = {}
     if style then o.Style = style.ID else o.Style = DefaultStyle.ID end
     o.Visible = true
+    o.Type = "Row"
 
 	local c = canvas or DefaultCanvas
     o.ID = #c.Components+1
@@ -300,7 +323,7 @@ end
 
 -- WARNING: ALL References to Rows, Columns, Styles, should be given only via their ID, or using the appropriate functions
 Table = {}
-TableDefaults = { Type="Table", HeaderStyle = DefaultStyle.ID, ColumnSpacing = 5, RowSpacing = 5, TextPadX = 5, TextPadY = 5, BackgroundColor = "#000", ScrollWidth="5%", ScrollButtonHeight="5%", ScrollActiveColor = "#999", ScrollInactiveColor = "#444", ScrollStrokeColor = "#000", ScrollStrokeWidth = 1, CategoryTabAmount = 20, FreezeTopRows = true}
+TableDefaults = { HeaderStyle = DefaultStyle.ID, ColumnSpacing = 5, RowSpacing = 5, TextPadX = 5, TextPadY = 5, BackgroundColor = "#000", ScrollWidth="5%", ScrollButtonHeight="5%", ScrollActiveColor = "#999", ScrollInactiveColor = "#444", ScrollStrokeColor = "#000", ScrollStrokeWidth = 1, CategoryTabAmount = 20, FreezeTopRows = true}
 
 
 -- TODO: I can solve the ID requirements by proxying the table.  
@@ -314,6 +337,8 @@ function Table:new(canvas)
 	o = Component:new()
 	setmetatable(o, self)
 	self.__index = self
+
+    o.Type = "Table"
 
     o.Columns = {}
     o.Rows = {} -- Copying these from TableDefaults just pointed the reference at them.  I think tables are the only thing this applies to
@@ -335,6 +360,7 @@ end
 
 function Table:AddRow(row)
 	self.Rows[#self.Rows+1] = row.ID
+    row.parent = self.ID
 end
 
 function Table:AddColumns(columns)
