@@ -113,7 +113,7 @@ Currently only a Row and Table.HeaderStyle can accept a Style, but others may us
 
 ### Functions
 
-`Row:new(data, parent)` - Creates a new row, where `data` is a table whose keys map to Columns you have defined.  Ex: `Row:new({Name="Main"})`, assuming you have a column with key `"Main"`.  A parent row can be passed, so that childrens row can be collapsed/expanded when the parent is clicked.  This row inherits all attributes from the static Row object at time of creation
+`Row:new(data, parent)` - Creates a new row, where `data` is a table whose keys map to Columns you have defined.  Ex: `Row:new({Name="Main"})`, assuming you have a column with key `"Name"`.  A parent row can optionally be passed as a second argument, so that childrens row can be collapsed/expanded when the parent is clicked.  This row inherits all attributes from the static Row object at time of creation
 
 `someRow:AddRow(data)` - Creates and adds a new row to the specified parent row `someRow` with the specified data.  A shortcut for Row:new
 
