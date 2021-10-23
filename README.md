@@ -29,7 +29,9 @@ If you are only writing to one screen, you can ignore this - it creates and uses
 
 ### Variables
 
-`Canvas.NeedsUpdate` - (bool) Default: True - Indicates Table data has been changed and should be sent to the screen.  Set this to True after modifying data.  If this is true, it is still sending the previous data, and your implementation should wait until it's false before triggering it again
+`Canvas.NeedsUpdate` - (bool) Default: True - Indicates Table data has been changed and should be sent to the screen.  Set this to True after modifying data.  If this is true, it is still sending the previous data, and your implementation should wait until it's false before modifying data
+
+`Canvas.NeedsComponentUpdate` - (bool) Default: False - Indicates that a partial update is pending and should be sent to the screen.  Set this to true after using :UpdateComponent
 
 `DefaultCanvas` - (Canvas) Default: New Canvas - This is the Canvas used if you create an object without specifying a Canvas.  You may set this to the Canvas you are currently building so that newly created Tables, Rows, etc are all tied to this Canvas.  
 
@@ -42,6 +44,8 @@ If you are only writing to one screen, you can ignore this - it creates and uses
 `yourCanvas:Add(component)` - Adds `component` to the Canvas's list of `RenderedComponents`.  If you wish to add this manually, be sure you add the ID of the component, not the component itself
 
 `yourCanvas:Get(componentID)` - Gets a component from the given `componentID`.  Equivalent to `yourCanvas.Components[componentID]`
+
+`yourCanvas:UpdateComponent(component)` - Sets a component for update when `NeedsComponentUpdate` is true.  This will send only the specified components instead of the entire dataset.  Components also can be specified partially so it only sends the changed data, but must include the ID.  For example, updating a row might look like `DefaultCanvas:UpdateComponent({ID=row.ID, Data=row.Data})`, which would avoid re-sending the style data.  Setting only sub-components of data is not yet supported
 
 ## Style
 
