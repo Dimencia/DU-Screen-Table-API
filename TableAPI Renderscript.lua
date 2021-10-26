@@ -520,7 +520,7 @@ fonts = {}
 screenWidth, screenHeight = getResolution()
 
 
-local input = deserialize(getInput())
+local success, input = tryDeserialize(getInput())
 
 if input.S then
 	TableData = ""
