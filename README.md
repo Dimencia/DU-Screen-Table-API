@@ -110,6 +110,10 @@ Currently only a Row and Table.HeaderStyle can accept a Style, but others may us
 
 `Data` - (key/value pairs) Default: {} - The data used in the row, where the keys match the keys of Columns in the Table
 
+`TableID` - (Number) - When returned from a screen for the `OnClick` function, the TableID is returned with it
+
+`ColumnKey` - (String) - When returned from a screen for the `OnClick` function, the ColumnKey is returned with it.  This matches the key specified in one of your columns
+
 
 ### Functions
 
