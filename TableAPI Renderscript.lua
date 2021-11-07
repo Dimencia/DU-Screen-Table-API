@@ -260,7 +260,7 @@ if not init then
 							end
 							
 							-- Set some identifying info for them
-							row.TableName = Table.Name
+							row.TableID = Table.ID
 							row.ColumnKey = columnKey
 							-- And pass it to the output as a click
 							Table.OutputRows[#Table.OutputRows+1] = row
